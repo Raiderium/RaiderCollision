@@ -10,6 +10,6 @@
 
 	"dependencies": { 
 		"raider-math": "~master",
-		"raider-tools": "~master",
+		"raider-tools": "~master"
 	}
 }

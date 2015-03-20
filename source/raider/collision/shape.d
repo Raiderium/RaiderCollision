@@ -3,12 +3,7 @@
 import raider.math.all;
 import raider.collision.space;
 import raider.tools.reference;
-
-package struct Plug(U)
-{
-	aabb3f aabb;
-	P!(Shape!U) shape;
-}
+import std.math;
 
 /**
  * Collision geometry.
@@ -17,67 +12,193 @@ package struct Plug(U)
  * - Sphere
  * - Box
  * - Convex hull
- * - Triangle soup
+ * 
+ * TODO:
+ * - Triangle soup 
  * - Displacement map 
+ * 
+ * 'U' parameter is for userdata.
+ * 
+ * Shapes can be modified during simulation.
+ * 
+ * A shape should not outlive its space.
  */
-final class Shape(U)
-{private
-	aabb3f aabb;
-	Type type;
+abstract class Shape(U)
+{private:
+	alias Space!U Space_;
+	alias Shape!U Shape_;
+	
+	P!Space_ space;
+	vec3 _pos;
+	mat3 _ori;
+
+	@property Space_.Proxy proxy()
+	{
+		return Space_.Proxy(aabb, P!Shape_(this));
+	}
 
 public:
-	enum Type
+	U data;
+
+	this(P!Space_ space)
 	{
-		Sphere,
-		Box,
-		ConvexHull,
-		TriangleSoup,
-		DisplacementMap,
-		None
+		this.space = space;
+		_pos = vec3(0,0,0);
+		_ori = mat3.identity;
+
+		synchronized(space.mutex)
+		{
+			space.shapes.add(proxy);
+		}
 	}
 
-	U data; //User data
-
-	this() {}
-	~this() { reset; }
-
-	@property vec3 position() { return vec3(); }
-	@property void position(vec3 value) { }
-	@property mat3 orientation() { mat3 r; return r; }
-	@property void orientation(mat3 value) { }
-
-	private void reset()
+	~this()
 	{
-		type = Type.None;
+		synchronized(space.mutex)
+		{
+			foreach(x; 0..space.shapes.size)
+			{
+				if(space.shapes[x].shape == this)
+				{
+					space.shapes.removeFast(x);
+					return;
+				}
+			}
+			assert(0);
+		}
+	}
+
+	aabb3f aabb();
+	vec3 supportLocal(ref vec3 dir);
+
+	@property vec3 pos() { return _pos; }
+	@property void pos(vec3 value) { _pos = value; }
+	@property mat3 ori() { return _ori; }
+	@property void ori(mat3 value) { _ori = value; }
+
+	///Finds support point in global coordinates
+	//Unrolled for speed, this is an inner loop
+	vec3 support(vec3 dir)
+	{
+		//Get dir in local space and find support point
+		vec3 p = void;
+		p[0] = dir[0] * _ori.f[0] + dir[1] * _ori.f[3] + dir[2] * _ori.f[6];
+		p[1] = dir[0] * _ori.f[1] + dir[1] * _ori.f[4] + dir[2] * _ori.f[7];
+		p[2] = dir[0] * _ori.f[2] + dir[1] * _ori.f[5] + dir[2] * _ori.f[8];
+		p = supportLocal(p);
+
+		//Return support point in global space (inc. translation)
+		vec3 g = void;
+		g[0] = p[0] * _ori.f[0] + p[1] * _ori.f[1] + p[2] * _ori.f[2];
+		g[1] = p[0] * _ori.f[3] + p[1] * _ori.f[4] + p[2] * _ori.f[5];
+		g[2] = p[0] * _ori.f[6] + p[1] * _ori.f[7] + p[2] * _ori.f[8];
+		return g + _pos;
+	}
+}
+
+class Sphere(U) : Shape!U
+{public:
+	double radius;
+
+	this(P!(Space!U) space, double radius = 1.0)
+	{
+		super(space);
+		this.radius = radius;
+	}
+
+	override aabb3f aabb()
+	{
+		return aabb3f(pos - radius, pos + radius);
+	}
+
+	override vec3 supportLocal(ref vec3 dir)
+	{
+		dir.normalize; dir *= radius; return dir;
+	}
+}
+
+class Box(U) : Shape!U
+{public:
+	vec3 dim;
+
+	this(P!(Space!U) space, vec3 dimensions = vec3(1,1,1))
+	{
+		super(space);
+		dim = dimensions.abs;
 	}
 	
-	void setSphere(double radius)
+	override aabb3f aabb()
 	{
-		reset;
-		type = Type.Sphere;
-	}
-
-	void setBox(vec3 dim)
-	{
-		reset;
-		type = Type.Box;
-	}
-
-	void setConvexHull(vec3[] points)
-	{
-		reset;
-		type = Type.ConvexHull;
+		vec3 aadim = void;
+		double* o = _ori.ptr;
+		aadim[0] = 0.5f * (abs(o[0] * dim[0]) + abs(o[1] * dim[1]) + abs(o[2] * dim[2]));
+		aadim[1] = 0.5f * (abs(o[3] * dim[0]) + abs(o[4] * dim[1]) + abs(o[5] * dim[2]));
+		aadim[2] = 0.5f * (abs(o[6] * dim[0]) + abs(o[7] * dim[1]) + abs(o[8] * dim[2]));
+		return aabb3f(pos-aadim, pos + aadim);
 	}
 	
-	void setTriangleSoup(vec3[] verts, uint[] tris)
+	override vec3 supportLocal(ref vec3 dir)
 	{
-		reset;
-		type = Type.TriangleSoup;
+		vec3 r = void;
+		foreach(x; 0..3) r[x] = (dir[x] <= -0.0 ? -1.0 : 1.0) * dim[x];
+		return r;
+	}
+}
+
+class ConvexHull(U) : Shape!U
+{
+	this(P!(Space!U) space)
+	{
+		super(space);
 	}
 	
-	void setDisplacementMap(float[] values, uint width)
+	Array!vec3 points;
+
+	override aabb3f aabb()
 	{
-		reset;
-		type = Type.DisplacementMap;
+		return aabb3f();
 	}
+
+	override vec3 supportLocal(ref vec3 dir)
+	{
+		return vec3();
+	}
+}
+
+class TriangleSoup(U) : Shape!U
+{
+	this(P!(Space!U) space)
+	{
+		super(space);
+	}
+	
+	Array!vec3 verts;
+	Array!uint tris;
+
+	override aabb3f aabb()
+	{
+		return aabb3f();
+	}
+
+	override vec3 supportLocal(ref vec3 dir)
+	{ return vec3(); }
+}
+
+class DisplacementMap(U) : Shape!U
+{
+	this(P!(Space!U) space)
+	{
+		super(space);
+	}
+	
+	Array!float values;
+	uint width;
+
+	override aabb3f aabb()
+	{
+		return aabb3f();
+	}
+
+	override vec3 supportLocal(ref vec3 dir)
+	{ return vec3(); }
 }

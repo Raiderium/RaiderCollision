@@ -1,8 +1,10 @@
-﻿module raider.collision.space;
+module raider.collision.space;
 
+import raider.math.aabb;
 import raider.tools.array;
 import raider.tools.reference;
 import raider.collision.shape;
+import core.sync.mutex;
 
 /**
  * Generates collision information for a list of shapes.
@@ -14,28 +16,31 @@ import raider.collision.shape;
  */
 final class Space(U)
 {
+package:
 	alias Shape!U Shape_;
-	alias Plug!U Plug_;
-	Array!Plug_ plugs, plugs2;
-	Array!(R!Shape_) shapes;
+	struct Proxy { aabb3f aabb; P!Shape_ shape; }
+	Mutex mutex;
+
+public:
+	Array!Proxy shapes, shapes1;
+
+public:
+	this()
+	{
+		//warning for posterity - synchronizing on
+		//an uninitialized mutex causes.. confusion
+		mutex = new Mutex();
+	}
+
+	~this()
+	{
+		assert(shapes.length == 0);
+	}
 
 	void collide(void function(P!Shape_ a, P!Shape_ b) near)
 	{
-		//Naive check to allow development of dependent code.
-		if(!plugs.length) return; 
-
-		for(uint i = 1; i < plugs.length; i++)
-		{
-			Plug_ a = plugs[i];
-			for(uint j = 0; j < i; j++)
-			{
-				Plug_ b = plugs[j];
-				if(a.aabb.intersects(b.aabb)) near(a.shape, b.shape);
-			}
-		}
-
 		/*TODO Sort and Sweep and Stumble
-		Possible 1D-SAS-based non-incremental broadphase that
+		SAS-based non-incremental broadphase that
 		avoids the overhead of incremental without being
 		totally allergic to clustering or slow in sorting.
 
@@ -53,6 +58,22 @@ final class Space(U)
 		in one go on a perpendicular axis. (Note, objects in
 		more than one cluster are duplicated.)
 		*/
+
+		//Naive check
+		if(!shapes.length) return; 
+
+		//Proxies must be updated before the check
+		foreach(x; 0..shapes.length) shapes[x].aabb = shapes[x].shape.aabb;
+
+		for(uint i = 1; i < shapes.length; i++)
+		{
+			auto a = shapes[i];
+			for(uint j = 0; j < i; j++)
+			{
+				auto b = shapes[j];
+				if(a.aabb.intersects(b.aabb)) near(a.shape, b.shape);
+			}
+		}
 	}
 }
 
