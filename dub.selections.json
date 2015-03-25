@@ -1,0 +1,9 @@
+{
+	"fileVersion": 1,
+	"versions": {
+		"raider-tools": "0.0.1",
+		"derelict-util": "1.9.1",
+		"derelict-physfs": "1.0.0",
+		"raider-math": "0.0.1"
+	}
+}
