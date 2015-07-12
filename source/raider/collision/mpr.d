@@ -42,22 +42,22 @@ bool mpr(U)(Shape!U A, Shape!U B, ref vec3 Ar, ref vec3 Br)
 	return true;
 }
 
-import std.stdio;
 unittest
 {
-
 	import raider.collision.space;
 
 	auto space = New!(Space!int)();
 	{
-		auto a = New!(Sphere!int)(space.p, 1.0);
-		auto b = New!(Sphere!int)(space.p, 1.0);
-		a.pos = vec3(0.5,0,0);
+		auto a = New!(Sphere!int)(space, 1.0);
+		auto b = New!(Sphere!int)(space, 1.0);
+		a.pos = vec3(1.9,0,0);
 		b.pos = vec3(0,0,0);
 
 		vec3 Ar, Br;
-		writeln(mpr(a, b, Ar, Br));
-		writeln(mprIntersect(a, b));
+		assert(mpr(a, b, Ar, Br));
+		assert(mprIntersect(a, b));
+		b.pos = vec3(-0.2, 0, 0);
+		assert(!mprIntersect(a, b));
 	}
 }
 
@@ -106,7 +106,7 @@ struct Simplex(U)
 {
 	alias Support!U Sup;
 
-	Sup supports[4]; 
+	Sup[4] supports; 
 	private int last = -1;
 	@property int size() { return last + 1; }
 	@property void size(int) { last = size-1; }
@@ -143,7 +143,6 @@ struct Simplex(U)
 		dir = cross(supports[0].p, supports[1].p);
 		if(dir.isZero) return supports[1].p.isZero ? 1 : 2;
 		dir.normalize;
-		writeln(dir);
 		supports[2] = Sup(A, B, dir); size = 3;
 		if(dot(supports[2].p, dir) <= 0.0) return -1;
 
@@ -249,7 +248,7 @@ struct Simplex(U)
 
 	vec3 findPos(Shape!U A, Shape!U B)
 	{
-		double b[4];
+		double[4] b;
 		b[0] = dot(cross(supports[1].p, supports[2].p), supports[3].p);
 		b[1] = dot(cross(supports[3].p, supports[2].p), supports[0].p);
 		b[2] = dot(cross(supports[0].p, supports[1].p), supports[3].p);

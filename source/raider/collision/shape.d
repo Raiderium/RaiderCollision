@@ -21,7 +21,8 @@ import std.math;
  * 
  * Shapes can be modified during simulation.
  * 
- * A shape should not outlive its space.
+ * A shape should not outlive its space. If it does, the space
+ * destructor will assert.
  */
 abstract class Shape(U)
 {private:
@@ -40,9 +41,9 @@ abstract class Shape(U)
 public:
 	U data;
 
-	this(P!Space_ space)
+	this(Space_ space)
 	{
-		this.space = space;
+		this.space = P!Space_(space);
 		_pos = vec3(0,0,0);
 		_ori = mat3.identity;
 
@@ -54,6 +55,8 @@ public:
 
 	~this()
 	{
+		//Linear search to remove shape from space.
+		//Can't do much better; the shapes array is continually changing.
 		synchronized(space.mutex)
 		{
 			foreach(x; 0..space.shapes.size)
@@ -100,7 +103,7 @@ class Sphere(U) : Shape!U
 {public:
 	double radius;
 
-	this(P!(Space!U) space, double radius = 1.0)
+	this(Space!U space, double radius = 1.0)
 	{
 		super(space);
 		this.radius = radius;
@@ -121,7 +124,7 @@ class Box(U) : Shape!U
 {public:
 	vec3 dim;
 
-	this(P!(Space!U) space, vec3 dimensions = vec3(1,1,1))
+	this(Space!U space, vec3 dimensions = vec3(1,1,1))
 	{
 		super(space);
 		dim = dimensions.abs;
@@ -147,7 +150,7 @@ class Box(U) : Shape!U
 
 class ConvexHull(U) : Shape!U
 {
-	this(P!(Space!U) space)
+	this(Space!U space)
 	{
 		super(space);
 	}
@@ -167,7 +170,7 @@ class ConvexHull(U) : Shape!U
 
 class TriangleSoup(U) : Shape!U
 {
-	this(P!(Space!U) space)
+	this(Space!U space)
 	{
 		super(space);
 	}
@@ -186,7 +189,7 @@ class TriangleSoup(U) : Shape!U
 
 class DisplacementMap(U) : Shape!U
 {
-	this(P!(Space!U) space)
+	this(Space!U space)
 	{
 		super(space);
 	}

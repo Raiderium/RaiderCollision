@@ -1,6 +1,6 @@
 module raider.collision.space;
 
-import raider.math.aabb;
+import raider.math.all;
 import raider.tools.array;
 import raider.tools.reference;
 import raider.collision.shape;
@@ -37,7 +37,7 @@ public:
 		assert(shapes.length == 0);
 	}
 
-	void collide(void function(P!Shape_ a, P!Shape_ b) near)
+	void collide(void function(Shape_ a, Shape_ b) near)
 	{
 		/*TODO Sort and Sweep and Stumble
 		SAS-based non-incremental broadphase that
@@ -77,74 +77,27 @@ public:
 	}
 }
 
-/**
- * Floating point radix sort
- * 
- * Implementation based on http://stereopsis.com/radix.html
- */
-private void radixSortFloats(float* input, float* sorted, uint elements)
+unittest
 {
-	uint* sort = cast(uint*)sorted; 
-	uint* array = cast(uint*)input;
+	import std.stdio;
+	import raider.collision.shape;
 	
-	immutable uint kHist = 2048;
-	uint b1Array[kHist * 3];
-	
-	uint* b0 = b1Array.ptr;
-	uint* b1 = b0 + kHist;
-	uint* b2 = b1 + kHist;
-	
-	for(int x = 0; x < elements; x++)
+	auto space = New!(Space!int)();
+
 	{
-		uint fi = array[x];
-		
-		//Flip float
-		int m = fi >> 31;
-		fi ^= -m | 0x80000000;
-		
-		b0[fi & 0x7FF]++;
-		b1[fi >> 11 & 0x7FF]++;
-		b2[fi >> 22]++;
-	}
-	
-	uint s0, s1, s2, st;
-	
-	for(int x = 0; x < kHist; x++)
-	{ st = b0[x] + s0; b0[x] = s0 - 1; s0 = st; }
-	
-	for(int x = 0; x < kHist; x++)
-	{ st = b1[x] + s1; b1[x] = s1 - 1; s1 = st; }
-	
-	for(int x = 0; x < kHist; x++)
-	{ st = b2[x] + s2; b2[x] = s2 - 1; s2 = st; }
-	
-	for(int x = 0; x < elements; x++)
-	{
-		uint fi = array[x];
-		
-		//Flip float
-		int m = fi >> 31;
-		fi ^= -m | 0x80000000;
-		
-		uint pos = fi & 0x7FF;
-		sort[++b0[pos]] = fi;
-	}
-	
-	for(int x = 0; x < elements; x++)
-	{
-		uint si = sort[x];
-		uint pos = si >> 11 & 0x7FF;
-		array[++b1[pos]] = si;
-	}
-	
-	for(int x = 0; x < elements; x++)
-	{
-		uint ai = array[x];
-		uint pos = ai >> 22;
-		
-		//Unflip float
-		uint m = ((ai >> 31) - 1) | 0x80000000;	
-		ai ^= m;
-		sort[++b2[pos]] = ai;
+		auto a = New!(Sphere!int)(space, 1.0);
+		auto b = New!(Sphere!int)(space, 1.0);
+		auto c = New!(Sphere!int)(space, 1.0);
+		a.data = 0;
+		b.data = 0;
+		c.data = 0;
+		a.pos = vec3(0,1,0);
+		b.pos = vec3(0,0,0);
+		c.pos = vec3(0,0,0);
+
+		space.collide(function void(Shape!int a, Shape!int b) { a.data++; b.data++; });
+		assert(a.data == 2);
+		assert(b.data == 2);
+		assert(c.data == 2);
 	}
 }
