@@ -1,6 +1,6 @@
 module raider.collision.space;
 
-import raider.math.all;
+import raider.math;
 import raider.tools.array;
 import raider.tools.reference;
 import raider.collision.shape;

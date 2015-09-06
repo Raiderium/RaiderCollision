@@ -1,7 +1,7 @@
 module raider.collision.mpr;
 
 import raider.collision.shape;
-import raider.math.all;
+import raider.math;
 import raider.tools.reference;
 import std.math;
 

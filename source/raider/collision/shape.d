@@ -1,6 +1,6 @@
-﻿module raider.collision.shape;
+module raider.collision.shape;
 
-import raider.math.all;
+import raider.math;
 import raider.collision.space;
 import raider.tools.reference;
 import std.math;
