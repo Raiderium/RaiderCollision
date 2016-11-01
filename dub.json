@@ -1,16 +1,15 @@
 {
     "name": "raider-collision",
     "version": "0.0.1",
-    "description": "A small collision library in D.",
+    "description": "A small collision library.",
     "homepage": "https://github.com/Raiderium/RaiderCollision",
     "license": "MIT",
     "authors": ["Aiden Sibley"],
-
     "targetName": "RaiderCollision",
     "targetPath": "lib",
 
-	"dependencies": { 
-		"raider-tools": ">0.0.0",
-		"raider-math": ">0.0.0"
-	}
+    "dependencies": { 
+        "raider-tools": ">0.0.0",
+        "raider-math": ">0.0.0"
+    }
 }
