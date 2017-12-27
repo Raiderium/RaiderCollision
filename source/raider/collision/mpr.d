@@ -5,40 +5,40 @@ import raider.math;
 import raider.tools.reference;
 import std.math;
 
-//This file is based on bits of libccd by Daniel Fiser
+//This file is based on mpr.c from libccd by Daniel Fiser
 
-immutable double mprTolerance = 0.0001;
+immutable double mprTolerance = 1E-6F;
+immutable uint mprLoopMax = 100;
+
 /**
  * Minkowski portal refinement penetration algorithm
  * 
  * Finds the points of deepest penetration between 
- * shapes A and B, and puts the results in Ap and 
- * Bp. Ap is on A's surface and Bp is on B's surface.
+ * shapes A and B, and puts the results in pa and 
+ * pb. pa is on A's surface and pb is on B's surface.
+ * (..almost. MPR does not find the minimum separation.)
  * 
  * Returns true if an intersection was found, false 
  * if not (or if the search failed / took too long).
  */
-bool mpr(U)(Shape!U A, Shape!U B, ref vec3 Ar, ref vec3 Br)
+bool mpr(U)(Shape!U A, Shape!U B, ref vec3 pa, ref vec3 pb)
 {
-	double depth;
-	vec3 dir;
-	vec3 pos;
-
 	Simplex!U portal;
 	int r = portal.discoverPortal(A, B);
 	switch(r)
 	{
-		case 1: portal.findPenetrationTouch(depth, dir, pos); break;
-		case 2: portal.findPenetrationSegment(depth, dir, pos); break;
+		case 1: //FindPenetrationTouch
+		case 2: //FindPenetrationSegment
+			pa = portal.supports[1].Ap;
+			pb = portal.supports[1].Bp;
+			break;
 		case 0:
 			if(portal.refinePortal(A, B) < 0) return false;
-			portal.findPenetration(A, B, depth, dir, pos);
+			portal.findPenetration(A, B, pa, pb);
 			break;
 		default:
 			return false;
 	}
-	Ar = pos;
-	Br =  Ar + dir*depth;
 	return true;
 }
 
@@ -47,6 +47,7 @@ unittest
 	import raider.collision.space;
 
 	auto space = New!(Space!int)();
+
 	{
 		auto a = New!(Sphere!int)(space, 1.0);
 		auto b = New!(Sphere!int)(space, 1.0);
@@ -153,19 +154,19 @@ struct Simplex(U)
 		dir.normalize;
 
 		if(dot(supports[0].p, dir) > 0.0) { swap(1, 2); dir *= -1; }
-		
+
+		bool outside = false;
+
 		while(true)
 		{
-			bool outside = false;
-
 			if(outside)
 			{
 				va = supports[1].p - supports[0].p;
 				vb = supports[2].p - supports[0].p;
 				dir = cross(va, vb);
 				dir.normalize;
-				outside = false;
 			}
+			outside = false;
 
 			supports[3] = Sup(A, B, dir);
 			if(dot(supports[3].p, dir) <= 0.0) return -1;
@@ -208,21 +209,28 @@ struct Simplex(U)
 		}
 	}
 
-	void findPenetration(Shape!U A, Shape!U B, ref double depth, ref vec3 pdir, ref vec3 pos)
+	void findPenetration(Shape!U A, Shape!U B, ref vec3 p1, ref vec3 p2)
 	{
-		immutable uint loopMax = 100;
 		uint loops;
 		while(true)
 		{
 			vec3 dir = portalDirection;
 			auto v4 = Sup(A, B, dir);
 
-			if(portalReachTolerance(v4, dir) || loops > loopMax)
+			if(portalReachTolerance(v4, dir) || loops > mprLoopMax)
 			{
-				depth = sqrt(pointTriDistance2(vec3(), supports[1].p, supports[2].p, supports[3].p, pdir));
+				vec3 pdir;
+				double depth = sqrt(pointTriDistance2(vec3(), supports[1].p, supports[2].p, supports[3].p, pdir));
+				if(pdir.isZero) pdir = dir;
 				pdir.normalize;
-				pos = findPos(A, B);
+				pdir *= depth * 0.5;
+				findPos(A, B, p1, p2);
+				p1 += p2;
+				p1 *= 0.5;
+				p2 = p1 + pdir;
+				p1 -= pdir;
 				return;
+
 			}
 
 			expandPortal(v4);
@@ -231,22 +239,7 @@ struct Simplex(U)
 
 	}
 
-	void findPenetrationTouch(ref double depth, ref vec3 dir, ref vec3 pos)
-	{
-		depth = 0.0;
-		dir = vec3(0,0,0);
-		pos = (supports[1].Ap + supports[1].Bp) * 0.5;
-	}
-
-	void findPenetrationSegment(ref double depth, ref vec3 dir, ref vec3 pos)
-	{
-		pos = (supports[1].Ap + supports[1].Bp) * 0.5;
-		dir = supports[1].p;
-		depth = dir.length;
-		if(depth != 0.0) dir /= depth;
-	}
-
-	vec3 findPos(Shape!U A, Shape!U B)
+	void findPos(Shape!U A, Shape!U B, ref vec3 p1, ref vec3 p2)
 	{
 		double[4] b;
 		b[0] = dot(cross(supports[1].p, supports[2].p), supports[3].p);
@@ -267,7 +260,8 @@ struct Simplex(U)
 
 		double inv = 1.0 / sum;
 
-		vec3 p1, p2;
+		p1 = vec3.zero;
+		p2 = vec3.zero;
 
 		foreach(i; 0..4)
 		{
@@ -277,8 +271,8 @@ struct Simplex(U)
 
 		p1 *= inv;
 		p2 *= inv;
-
-		return (p1 + p2) * 0.5;
+		//import std.experimental.logger;
+		//std.experimental.logger.log(p1 - p2);
 	}
 
 	void expandPortal(ref Sup v4)

@@ -7,22 +7,23 @@ import raider.collision.shape;
 import core.sync.mutex;
 
 /**
- * Generates collision information for a list of shapes.
+ * Stores shapes, finds collisions between them.
  * 
  * Optimised for environments where all objects are moving.
  * Parallel create, delete, update and testing (hopefully).
  * 
  * 'U' parameter is for userdata stored on shapes.
  */
-final class Space(U)
+@RC class Space(U)
 {
 package:
 	alias Shape!U Shape_;
-	struct Proxy { aabb3f aabb; P!Shape_ shape; }
+	alias Shape_.Proxy Proxy_;
+
 	Mutex mutex;
 
 public:
-	Array!Proxy shapes, shapes1;
+	Array!Proxy_ shapes, shapes1;
 
 public:
 	this()
@@ -34,29 +35,62 @@ public:
 
 	~this()
 	{
-		assert(shapes.length == 0);
+		synchronized(mutex)
+			foreach(ref proxy; shapes)
+				proxy.shape.space = null;
 	}
 
+	//TODO Pass function as a template parameter for static bind
 	void collide(void function(Shape_ a, Shape_ b) near)
 	{
 		/*TODO Sort and Sweep and Stumble
-		SAS-based non-incremental broadphase that
+		SAS-based non-incremental (one-shot) broadphase that
 		avoids the overhead of incremental without being
 		totally allergic to clustering or slow in sorting.
 
-		Sorts with floating-point radix sort. A parallel 
-		algorithm is possible (if not assuredly feasible).
+		Sorts either with floating-point radix sort or gnomesort.
+		The AABBs are broken into a tree, with leaves that can be
+		sorted separately. The tree is described with special tags
+		stored within the stream of shape proxies.
 		
-		Detects clusters and 'stumbles' (defers them to a 
-		perpendicular axis). Cluster detection is based on the 
-		size of the overlap list. A cluster starts when it goes 
-		past a threshold, and ends when it drops a certain 
+		Due to complexity constraints, the tree is not dynamic, but
+		specified opportunistically and artistically. Bodies in the
+		physics engine will group their shapes, entities are expected
+		to group their bodies (when appropriate), and other developer
+		insights can create larger or more specific groupings.
+
+		Radix sort is faster for a disordered state.
+		What about one pass of radix on the MSB, then gnome? Reduces 
+		the impact of massive disturbances, but we still get a little
+		of the sweet, sweet almost-sorted performance.
+		
+		SASAS collision check:
+		Detects clusters and 'stumbles' (defers them to a sweep 
+		along a perpendicular axis). Cluster detection is based 
+		on the size of the overlap list. A cluster starts when 
+		it goes past a threshold, and ends when it drops a certain 
 		cumulative number of overlaps. If there are still too
 		many overlaps, a new cluster begins immediately.
 
 		All clusters are added to another SAS list and sorted
-		in one go on a perpendicular axis. (Note, objects in
-		more than one cluster are duplicated.)
+		in one go on a perpendicular axis. (Note, proxies in
+		more than one cluster are duplicated. Thus it is essential
+		the proxy be as small as possible.)
+		
+		It might be appropriate to use fixed point AABBs.
+		Floats and doubles both have logarithmic precision which
+		is totally useless. A nice normalised long is much better.
+		If the milky way is 100,000 light-years across, 2**64
+		gives 51.2 distinct states per meter, or 19mm increments.
+		Serviceable precision for AABBs in a space sim. It would
+		be much worse with doubles.
+
+		Plus, it makes radix sort simpler and faster.
+		The dimensions of the AABB might be recorded as an offset,
+		so they can be smaller. 
+
+		For most applications, Q26.6 and Q10.6 seem appropriate - world size
+		up to 67000km, AABB size up to 1km, 15mm precision.
 		*/
 
 		//Naive check
@@ -74,6 +108,11 @@ public:
 				if(a.aabb.intersects(b.aabb)) near(a.shape, b.shape);
 			}
 		}
+
+		/*
+		 * Tree sas: Only when the first element in the window is removed do we 
+		 * tunnel into its internal collisions.
+		 */
 	}
 }
 
@@ -101,3 +140,17 @@ unittest
 		assert(c.data == 2);
 	}
 }
+
+
+/* 11-8-2017
+ * Regarding options..
+ * Most engines have a compile-time option to select between float or double precision.
+ * Because of our focus on memory footprint (and its influence on overall performance),
+ * we want to allow greater control, including offering fixed-point math, which is good
+ * for less capable instruction sets, and is usually more appropriate for physics.
+ * 
+ * Rotations: Quat or matrix, double/float/Q0.16/Q0.32
+ * Positions: double/float/Q?.?
+ * AABBs: double/float/Q26.6-Q10.6/??
+ * 
+ */
