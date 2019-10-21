@@ -1,0 +1,12 @@
+name "raider-collision"
+version "0.0.1"
+description "A small 3D collision library."
+homepage "https://github.com/Raiderium/RaiderCollision"
+license "MIT"
+authors "Aiden Sibley"
+
+targetName "RaiderCollision"
+targetPath "lib"
+
+dependency "raider-tools" version=">0.0.0"
+dependency "raider-math" version=">0.0.0"
